@@ -1,7 +1,8 @@
 "use client";
 
 import { CreditCard, Banknote } from "lucide-react";
-import { CartLine, PaymentMethod, fmt } from "../checkout.types";
+import { CartLine } from "@/app/context/CartContext";
+import { PaymentMethod, fmt } from "../checkout.types";
 import PayPalCheckoutButton from "@/components/cart/PayPalCheckoutButton";
 
 interface SummaryStepProps {
