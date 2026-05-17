@@ -105,28 +105,30 @@ useEffect(() => {
   setCheckoutId(pending.checkoutId);
   setSubmitting(true);
 
-  fetch("/api/confirm-order", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      customer: pending.form,
-      items: pending.lines,
-      total: pending.totalPrice + pending.deliveryFee,
-      deliveryFee: pending.deliveryFee,
-      payment_method: "card",
-      sumup_checkout_id: pending.checkoutId,
-    }),
+fetch("/api/confirm-order", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    customer: pending.form,
+    items: pending.lines,
+    total: pending.totalPrice + pending.deliveryFee,
+    deliveryFee: pending.deliveryFee,
+    payment_method: "card",
+    sumup_checkout_id: pending.checkoutId,
+    idempotency_key: pending.idempotencyKey,
+  }),
+})
+  .then((r) => r.json())
+  .then((data) => {
+    if (data.orderNumber) {
+      sessionStorage.removeItem("sumup_pending"); // ✅ clear on success
+      setOrderNumber(data.orderNumber);
+      setStep("success");
+    } else {
+      setErrorMsg(data.error ?? "Bestellung konnte nicht gespeichert werden");
+      setStep("error");
+    }
   })
-    .then((r) => r.json())
-    .then((data) => {
-      if (data.orderNumber) {
-        setOrderNumber(data.orderNumber);
-        setStep("success");
-      } else {
-        setErrorMsg(data.error ?? "Bestellung konnte nicht gespeichert werden");
-        setStep("error");
-      }
-    })
     .catch(() => {
       setErrorMsg("Bestellung konnte nicht gespeichert werden");
       setStep("error");
@@ -139,12 +141,9 @@ useEffect(() => {
     let attempts = 0;
     const MAX_ATTEMPTS = 150;
 
-   pollRef.current = setInterval(async () => {
-  // ✅ Add this line at the very top
-  if (sessionStorage.getItem("sumup_pending")) return;
-
-  attempts++;
-
+    pollRef.current = setInterval(async () => {
+  if (sessionStorage.getItem("sumup_pending")) return; // ✅ 3DS redirect pending
+  attempts++
       if (attempts > MAX_ATTEMPTS) {
         clearInterval(pollRef.current!);
         setErrorMsg("Zeitüberschreitung. Bitte versuche es erneut.");
@@ -234,14 +233,15 @@ useEffect(() => {
     }
     const data = await res.json();
 
-    // ✅ Save everything to sessionStorage before SumUp redirects
-    sessionStorage.setItem("sumup_pending", JSON.stringify({
-      checkoutId: data.checkoutId,
-      form,
-      lines: mapLines(lines),
-      totalPrice,
-      deliveryFee,
-    }));
+    const idempotencyKey = `order_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+sessionStorage.setItem("sumup_pending", JSON.stringify({
+  checkoutId: data.checkoutId,
+  idempotencyKey,
+  form,
+  lines: mapLines(lines),
+  totalPrice,
+  deliveryFee,
+}));
 
     setCheckoutId(data.checkoutId);
     setStep("payment");

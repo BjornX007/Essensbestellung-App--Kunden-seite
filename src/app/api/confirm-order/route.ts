@@ -15,6 +15,9 @@ const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS = 5;
 const ipMap = new Map<string, { count: number; resetAt: number }>();
 
+// ✅ In-memory idempotency store (blocks duplicate requests within same server instance)
+const processedKeys = new Set<string>();
+
 function checkRateLimit(ip: string): { allowed: boolean; retryAfterSec: number } {
   const now = Date.now();
   const entry = ipMap.get(ip);
@@ -98,7 +101,7 @@ interface CustomerData {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Shop status guard ────────────────────────────────────────────────────
+  // ── Shop status guard ──────────────────────────────────────────────────
   const shopStatus = await getShopStatus();
   if (!shopStatus.is_open) {
     return NextResponse.json(
@@ -106,10 +109,8 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     );
   }
-  
-  
-  // ────────────────────────────────────────────────────────────────────────
 
+  // ── Rate limit ─────────────────────────────────────────────────────────
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
   const { allowed, retryAfterSec } = checkRateLimit(ip);
@@ -130,6 +131,7 @@ export async function POST(req: NextRequest) {
       sumup_checkout_id,
       paypal_order_id,
       deliveryFee,
+      idempotency_key,
     } = body as {
       customer: CustomerData;
       items: OrderItem[];
@@ -138,7 +140,28 @@ export async function POST(req: NextRequest) {
       sumup_checkout_id?: string;
       paypal_order_id?: string;
       deliveryFee: number;
+      idempotency_key?: string;
     };
+
+    // ✅ Layer 1: In-memory idempotency check (fast, same server instance)
+    if (idempotency_key) {
+      if (processedKeys.has(idempotency_key)) {
+        console.warn("Duplicate order blocked by idempotency key:", idempotency_key);
+        return NextResponse.json({ orderNumber: "already_saved" }, { status: 200 });
+      }
+      processedKeys.add(idempotency_key);
+    }
+
+    // ✅ Layer 2: DB-level duplicate check on sumup_checkout_id (survives reloads + server restarts)
+    if (sumup_checkout_id) {
+      const existing = await sql`
+        SELECT order_number FROM orders WHERE sumup_checkout_id = ${sumup_checkout_id} LIMIT 1
+      `;
+      if (existing.length > 0) {
+        console.warn("Duplicate SumUp checkout blocked:", sumup_checkout_id);
+        return NextResponse.json({ orderNumber: existing[0].order_number }, { status: 200 });
+      }
+    }
 
     const resolvedFee =
       typeof deliveryFee === "number" && deliveryFee >= 0 ? deliveryFee : 0;
@@ -228,12 +251,13 @@ export async function POST(req: NextRequest) {
     const [seq] = await sql`SELECT nextval('orders_order_number_seq') AS n`;
     const orderNumber = String(seq.n).padStart(4, "0");
 
+    // ✅ sumup_checkout_id stored — UNIQUE constraint in DB prevents duplicates at DB level
     const [order] = await sql`
       INSERT INTO orders (
         order_number,
         status, order_type, customer_name, customer_email, customer_phone,
         customer_note, delivery_address_id, subtotal, delivery_fee, tax, total,
-        payment_method, payment_status, paypal_order_id
+        payment_method, payment_status, paypal_order_id, sumup_checkout_id
       ) VALUES (
         ${orderNumber},
         'pending', 'delivery',
@@ -241,7 +265,8 @@ export async function POST(req: NextRequest) {
         ${customer.message ?? null}, ${address.id},
         ${subtotal}, ${resolvedFee}, 0, ${total},
         ${payment_method}, 'paid',
-        ${paypalCaptureId ?? null}
+        ${paypalCaptureId ?? null},
+        ${sumup_checkout_id ?? null}
       )
       RETURNING id, order_number
     `;
@@ -286,7 +311,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── SumUp redirect handler ───────────────────────────────────────────────
+// ── SumUp redirect handler ─────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const checkoutId = searchParams.get("checkout_id") ?? searchParams.get("id") ?? "";
