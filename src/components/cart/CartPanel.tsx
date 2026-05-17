@@ -70,10 +70,9 @@ const shopClosed = statusLoading || status === null || !status.is_open;
             lines.map(({ lineId, product, qty, selectedOptions, unitPrice }) => (
               <div key={lineId} className="cart-item">
 
-                {/* 1. Image */}
-                <div className="cart-item-img">
-                  <img src={product.image_url} alt={product.name} />
-                </div>
+               <div className="cart-item-img">
+  <img src={product.image_url ?? undefined} alt={product.name} />
+</div>
 
                 {/* 2. Name + qty controls */}
                 <div className="cart-item-info">
@@ -83,9 +82,8 @@ const shopClosed = statusLoading || status === null || !status.is_open;
                     </span>
                   )}
                   <span className="cart-item-name">{product.name}</span>
-                  <span className="cart-item-unit">{fmt(unitPrice)} / Stk.</span>
-                  ...
-                  <div className="qty-controls">
+                 <span className="cart-item-unit">{fmt(unitPrice)} / Stk.</span>
+<div className="qty-controls">
                     <button className="qty-btn" onClick={() => decrement(lineId)} aria-label="Weniger">
                       <Minus size={13} />
                     </button>
