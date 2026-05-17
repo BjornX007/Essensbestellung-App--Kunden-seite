@@ -32,7 +32,7 @@ interface ProductOptionsModalProps {
   onConfirm: (
     product: Product,
     selections: Record<string, Set<string>>,
-    optionsMeta: Record<string, { label: string; price_delta: number }>, // ✅ flat
+    optionsMeta: Record<string, { label: string; price_delta: number }[]>, // ✅ flat
     extraPrice: number
   ) => void;
 }
@@ -60,11 +60,11 @@ function isComplete(groups: OptionGroup[], selections: Selections): boolean {
 // ✅ replace the old buildOptionsMeta function
 function buildOptionsMeta(
   groups: OptionGroup[]
-): Record<string, { label: string; price_delta: number }> {
-  const meta: Record<string, { label: string; price_delta: number }> = {};
+): Record<string, { label: string; price_delta: number }[]> {
+  const meta: Record<string, { label: string; price_delta: number }[]> = {};
   for (const group of groups) {
     for (const opt of group.options) {
-      meta[opt.id] = { label: opt.label, price_delta: opt.price_delta };
+      meta[opt.id] = [{ label: opt.label, price_delta: opt.price_delta }];
     }
   }
   return meta;

@@ -35,7 +35,7 @@ interface CartContextType {
   add: (
     product: Product,
     selections?: Record<string, Set<string>>,
-    optionsMeta?: Record<string, { label: string; price_delta: number }>, // ✅ flat, keyed by option UUID
+    optionsMeta?: Record<string, { label: string; price_delta: number }[]>, // ✅ flat, keyed by option UUID
     extraPrice?: number
   ) => void;
   remove: (lineId: string) => void;
@@ -61,21 +61,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const add = (
     product: Product,
     selections: Record<string, Set<string>> = {},
-    optionsMeta: Record<string, { label: string; price_delta: number }> = {}, // ✅ flat map
+    optionsMeta: Record<string, { label: string; price_delta: number }[]> = {}, // ✅ flat map
     extraPrice = 0
   ) => {
     const selectedOptions: SelectedOption[] = [];
 
     for (const [groupId, optionIds] of Object.entries(selections)) {
       for (const optionId of optionIds) {
-        const meta = optionsMeta[optionId]; // ✅ direct UUID lookup — always correct
-        if (!meta) continue;               // skip "Keine Sauce" / zero-delta defaults if desired
-        selectedOptions.push({
-          groupId,
-          optionId,
-          label: meta.label,
-          price_delta: meta.price_delta,
-        });
+        const metaList = optionsMeta[optionId];
+if (!metaList?.length) continue;
+const meta = metaList[0];
+selectedOptions.push({
+  groupId,
+  optionId,
+  label: meta.label,
+  price_delta: meta.price_delta,
+});
       }
     }
 
