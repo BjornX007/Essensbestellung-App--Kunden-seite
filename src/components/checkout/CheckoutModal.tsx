@@ -84,7 +84,55 @@ export default function CheckoutModal({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { ensureSumUpScript(); }, []);
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const returnedCheckoutId = params.get("sumup_checkout_id");
+  if (!returnedCheckoutId) return;
 
+  // Clean URL immediately
+  window.history.replaceState({}, "", window.location.pathname);
+
+  const raw = sessionStorage.getItem("sumup_pending");
+  if (!raw) return;
+  sessionStorage.removeItem("sumup_pending");
+
+  const pending = JSON.parse(raw);
+  if (pending.checkoutId !== returnedCheckoutId) return;
+
+  // Restore state and save order
+  setForm(pending.form);
+  setDeliveryFee(pending.deliveryFee);
+  setCheckoutId(pending.checkoutId);
+  setSubmitting(true);
+
+  fetch("/api/confirm-order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer: pending.form,
+      items: pending.lines,
+      total: pending.totalPrice + pending.deliveryFee,
+      deliveryFee: pending.deliveryFee,
+      payment_method: "card",
+      sumup_checkout_id: pending.checkoutId,
+    }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.orderNumber) {
+        setOrderNumber(data.orderNumber);
+        setStep("success");
+      } else {
+        setErrorMsg(data.error ?? "Bestellung konnte nicht gespeichert werden");
+        setStep("error");
+      }
+    })
+    .catch(() => {
+      setErrorMsg("Bestellung konnte nicht gespeichert werden");
+      setStep("error");
+    })
+    .finally(() => setSubmitting(false));
+}, []);
   // ── Poll SumUp for 3DS ───────────────────────────────────────────────────
   useEffect(() => {
     if (step !== "payment" || !checkoutId) return;
@@ -164,32 +212,42 @@ export default function CheckoutModal({
   };
 
   // ── Step 2a: card selected → create SumUp checkout → payment step ────────
-  const handleSummaryCard = async () => {
-    setSubmitting(true);
-    orderSaved.current = false;
-    try {
-      const res = await fetch("/api/create-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: mapLines(lines),
-          total: totalPrice + deliveryFee,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Zahlung konnte nicht gestartet werden");
-      }
-      const data = await res.json();
-      setCheckoutId(data.checkoutId);
-      setStep("payment");
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Unbekannter Fehler");
-      setStep("error");
-    } finally {
-      setSubmitting(false);
+ const handleSummaryCard = async () => {
+  setSubmitting(true);
+  orderSaved.current = false;
+  try {
+    const res = await fetch("/api/create-checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: mapLines(lines),
+        total: totalPrice + deliveryFee,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Zahlung konnte nicht gestartet werden");
     }
-  };
+    const data = await res.json();
+
+    // ✅ Save everything to sessionStorage before SumUp redirects
+    sessionStorage.setItem("sumup_pending", JSON.stringify({
+      checkoutId: data.checkoutId,
+      form,
+      lines: mapLines(lines),
+      totalPrice,
+      deliveryFee,
+    }));
+
+    setCheckoutId(data.checkoutId);
+    setStep("payment");
+  } catch (err) {
+    setErrorMsg(err instanceof Error ? err.message : "Unbekannter Fehler");
+    setStep("error");
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   // ── Step 2b: cash selected → review step ────────────────────────────────
   const handleSummaryCash = () => setStep("review");

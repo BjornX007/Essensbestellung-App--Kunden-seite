@@ -5,7 +5,7 @@ import styles from "./OrderPage.module.css";
 import Navbar from "@/components/layout/nav/Nav";
 import { useCart, type Product } from "@/app/context/CartContext";
 import ProductOptionsModal from "@/components/ProductOptionsModal/ProductOptionsModal";
-
+import CheckoutModal from "@/components/checkout/CheckoutModal";
 interface Category {
   id: string;
   name: string;
@@ -114,6 +114,16 @@ export default function OrderPage() {
 const [navScrolled, setNavScrolled] = useState(false);
   const { add, totalItems, totalPrice, setCartOpen } = useCart();
   const navRef = useRef<HTMLDivElement>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+// Add this in OrderPage, near your other useEffects
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("sumup_checkout_id")) {
+    setCheckoutOpen(true);
+  }
+}, []);
+
+
 
   useEffect(() => {
     fetch(`${window.location.origin}/api/menu`)
@@ -285,8 +295,18 @@ const [navScrolled, setNavScrolled] = useState(false);
               <span className={styles.cartArrow}>→</span>
             </span>
           </button>
+
         </div>
+
       )}
+      {checkoutOpen && (
+        <CheckoutModal
+          onClose={() => setCheckoutOpen(false)}
+          onSuccess={() => setCheckoutOpen(false)}
+        />
+      )}
+
+  
     </div>
   );
 }

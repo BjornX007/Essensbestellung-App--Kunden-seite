@@ -292,6 +292,6 @@ export async function GET(req: NextRequest) {
   const checkoutId = searchParams.get("checkout_id") ?? searchParams.get("id") ?? "";
 
   return NextResponse.redirect(
-    `${process.env.NEXT_PUBLIC_BASE_URL}/menu?checkout_id=${checkoutId}`
+    `${process.env.NEXT_PUBLIC_BASE_URL}/menu?sumup_checkout_id=${checkoutId}`
   );
 }
