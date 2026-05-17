@@ -139,8 +139,12 @@ useEffect(() => {
     let attempts = 0;
     const MAX_ATTEMPTS = 150;
 
-    pollRef.current = setInterval(async () => {
-      attempts++;
+   pollRef.current = setInterval(async () => {
+  // ✅ Add this line at the very top
+  if (sessionStorage.getItem("sumup_pending")) return;
+
+  attempts++;
+
       if (attempts > MAX_ATTEMPTS) {
         clearInterval(pollRef.current!);
         setErrorMsg("Zeitüberschreitung. Bitte versuche es erneut.");
