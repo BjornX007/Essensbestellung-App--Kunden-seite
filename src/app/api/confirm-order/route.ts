@@ -106,6 +106,8 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     );
   }
+  
+  
   // ────────────────────────────────────────────────────────────────────────
 
   const ip =
@@ -282,4 +284,14 @@ export async function POST(req: NextRequest) {
     console.error("confirm-order error:", err);
     return NextResponse.json({ error: "Interner Serverfehler" }, { status: 500 });
   }
+}
+
+// ── SumUp redirect handler ───────────────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const checkoutId = searchParams.get("checkout_id") ?? searchParams.get("id") ?? "";
+
+  return NextResponse.redirect(
+    `${process.env.NEXT_PUBLIC_BASE_URL}/menu?checkout_id=${checkoutId}`
+  );
 }
