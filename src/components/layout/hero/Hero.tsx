@@ -23,8 +23,8 @@ export default function Hero() {
 
   // Reset img error whenever info changes (new fetch)
   useEffect(() => {
-    setImgError(false);
-  }, [info]);
+  Promise.resolve().then(() => setImgError(false));
+}, [info]);
 
   // Priority: hero_image_url → logo_url → fallback placeholder
   const heroImageSrc =

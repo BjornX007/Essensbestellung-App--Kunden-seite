@@ -42,10 +42,10 @@ export function useDeliveryCheck(fields: AddressFields): DeliveryStatus {
     // Clear any pending debounce
     if (timerRef.current) clearTimeout(timerRef.current);
 
-    if (!isComplete(fields)) {
-      setStatus({ state: "idle" });
-      return;
-    }
+   if (!isComplete(fields)) {
+  Promise.resolve().then(() => setStatus({ state: "idle" }));
+  return;
+}
 
     setStatus({ state: "checking" });
 
