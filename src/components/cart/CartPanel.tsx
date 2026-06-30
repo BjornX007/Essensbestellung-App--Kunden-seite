@@ -7,7 +7,7 @@ import CheckoutModal from "../checkout/CheckoutModal";
 import { useShopStatus } from "@/lib/shop/useShopStatus";
 import { ShopClosedBanner } from "@/components/ShopClosedBanner";
 
-const MIN_ORDER = 15;
+const MIN_ORDER = 1;
 
 const fmt = (n: number) =>
   n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
