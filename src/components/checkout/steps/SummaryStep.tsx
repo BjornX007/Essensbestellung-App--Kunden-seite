@@ -68,6 +68,7 @@ export default function SummaryStep({
 
       <div className="co-section-label">Zahlungsmethode</div>
       <div className="co-payment-options">
+        {/*
         <button
           type="button"
           className={`co-pay-option ${paymentMethod === "card" ? "co-pay-option--active" : ""}`}
@@ -75,7 +76,9 @@ export default function SummaryStep({
         >
           <CreditCard size={20} />
           <span>Karte (SumUp)</span>
+
         </button>
+        */}
         <button
           type="button"
           className={`co-pay-option ${paymentMethod === "paypal" ? "co-pay-option--active" : ""}`}

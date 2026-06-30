@@ -205,7 +205,7 @@ fetch("/api/confirm-order", {
         return;
       }
 
-      setDeliveryFee(data.deliveryFee ?? 0);
+    setDeliveryFee(parseFloat(data.tier?.deliveryFee ?? 0));
       setStep("summary");
     } catch {
       setDeliveryError("Adresse konnte nicht geprüft werden. Bitte erneut versuchen.");
@@ -380,7 +380,7 @@ sessionStorage.setItem("sumup_pending", JSON.stringify({
             lines={lines}
             subtotalPrice={totalPrice}
             deliveryFee={deliveryFee}
-            totalPrice={totalPrice + deliveryFee}
+         totalPrice={parseFloat((totalPrice + deliveryFee).toFixed(2))}
             paymentMethod={paymentMethod}
             submitting={submitting}
             onBack={() => setStep("form")}
