@@ -6,10 +6,15 @@ import { getShopStatus } from "@/lib/shop/getShopStatus";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-const PAYPAL_BASE =
-  process.env.PAYPAL_MODE === "sandbox"
-    ? "https://api-m.sandbox.paypal.com"
-    : "https://api-m.paypal.com";
+//const PAYPAL_BASE =
+ // process.env.PAYPAL_MODE === "sandbox"
+  //  ? "https://api-m.sandbox.paypal.com"
+   // : "https://api-m.paypal.com";
+
+   const PAYPAL_BASE =
+  process.env.PAYPAL_MODE === "live"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
 
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS = 5;
