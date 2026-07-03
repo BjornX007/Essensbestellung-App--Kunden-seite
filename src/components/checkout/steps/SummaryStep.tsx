@@ -97,11 +97,7 @@ export default function SummaryStep({
         </button>
       </div>
 
-      {paymentMethod === "card" && (
-        <button className="co-btn-primary co-btn-continue" onClick={onCardContinue}>
-          Mit Karte zahlen →
-        </button>
-      )}
+      
 
       {paymentMethod === "paypal" && (
         <div className="co-paypal-wrap">

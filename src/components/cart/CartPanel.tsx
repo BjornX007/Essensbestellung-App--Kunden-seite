@@ -5,9 +5,8 @@ import { X, ShoppingCart, Lock, Plus, Minus, Trash2, ChevronRight } from "lucide
 import { useCart } from "@/app/context/CartContext";
 import CheckoutModal from "../checkout/CheckoutModal";
 import { useShopStatus } from "@/lib/shop/useShopStatus";
+import { useDeliveryTiers } from "@/lib/shop/useDeliveryTiers";
 import { ShopClosedBanner } from "@/components/ShopClosedBanner";
-
-const MIN_ORDER = 1;
 
 const fmt = (n: number) =>
   n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
@@ -17,11 +16,25 @@ export default function CartPanel() {
     useCart();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const { status, loading: statusLoading } = useShopStatus();
+  const {
+    minOrderEur,
+    feeMinEur,
+    feeMaxEur,
+    loading: tiersLoading,
+    error: tiersError,
+  } = useDeliveryTiers();
 
-  const belowMin = totalPrice < MIN_ORDER;
-const shopClosed = statusLoading || status === null || !status.is_open;
-  const checkoutBlocked = belowMin || shopClosed;
+  const belowMin = minOrderEur === null ? true : totalPrice < minOrderEur;
 
+  // Split "still figuring it out" from "confirmed closed" — these need
+  // different rendering, since ShopClosedBanner requires a real status object.
+  const statusUnknown = statusLoading || status === null;
+  const shopClosed = !statusUnknown && !status.is_open;
+
+  // Block checkout in both cases — we just can't confidently say it's open.
+  const checkoutBlocked = belowMin || statusUnknown || shopClosed || tiersLoading || !!tiersError;
+
+  // ... rest of component
   return (
     <>
       {/* Backdrop */}
@@ -69,12 +82,10 @@ const shopClosed = statusLoading || status === null || !status.is_open;
           ) : (
             lines.map(({ lineId, product, qty, selectedOptions, unitPrice }) => (
               <div key={lineId} className="cart-item">
+                <div className="cart-item-img">
+                  <img src={product.image_url ?? undefined} alt={product.name} />
+                </div>
 
-               <div className="cart-item-img">
-  <img src={product.image_url ?? undefined} alt={product.name} />
-</div>
-
-                {/* 2. Name + qty controls */}
                 <div className="cart-item-info">
                   {selectedOptions?.length > 0 && (
                     <span className="cart-item-options">
@@ -82,8 +93,8 @@ const shopClosed = statusLoading || status === null || !status.is_open;
                     </span>
                   )}
                   <span className="cart-item-name">{product.name}</span>
-                 <span className="cart-item-unit">{fmt(unitPrice)} / Stk.</span>
-<div className="qty-controls">
+                  <span className="cart-item-unit">{fmt(unitPrice)} / Stk.</span>
+                  <div className="qty-controls">
                     <button className="qty-btn" onClick={() => decrement(lineId)} aria-label="Weniger">
                       <Minus size={13} />
                     </button>
@@ -94,10 +105,8 @@ const shopClosed = statusLoading || status === null || !status.is_open;
                   </div>
                 </div>
 
-                {/* 3. Line total */}
                 <span className="cart-item-total">{fmt(unitPrice * qty)}</span>
 
-                {/* 4. Delete */}
                 <button
                   className="cart-item-remove"
                   onClick={() => remove(lineId)}
@@ -105,7 +114,6 @@ const shopClosed = statusLoading || status === null || !status.is_open;
                 >
                   <Trash2 size={15} />
                 </button>
-
               </div>
             ))
           )}
@@ -124,7 +132,18 @@ const shopClosed = statusLoading || status === null || !status.is_open;
               <span>nach Addresse-Eingabe</span>
             </div>
             <div className="sum-note">
-              1,90 – 3,90 € je nach Addresse · Mindestbestellwert {fmt(MIN_ORDER)}
+              {feeMinEur !== null && feeMaxEur !== null && minOrderEur !== null ? (
+                <>
+                  {feeMinEur === feeMaxEur
+                    ? fmt(feeMinEur)
+                    : `${fmt(feeMinEur)} – ${fmt(feeMaxEur)}`}{" "}
+                  je nach Adresse · Mindestbestellwert {fmt(minOrderEur)}
+                </>
+              ) : tiersError ? (
+                "Liefergebühren konnten nicht geladen werden"
+              ) : (
+                "Liefergebühren werden geladen …"
+              )}
             </div>
           </div>
         )}
@@ -132,8 +151,6 @@ const shopClosed = statusLoading || status === null || !status.is_open;
         {/* Footer */}
         {lines.length > 0 && (
           <div className="cart-foot">
-
-            {/* Shop closed banner — shown above the button when closed */}
             {shopClosed && (
               <ShopClosedBanner
                 reason={status!.reason}
@@ -141,10 +158,9 @@ const shopClosed = statusLoading || status === null || !status.is_open;
               />
             )}
 
-            {/* Min order warning — only shown when shop is open but total is too low */}
-            {!shopClosed && belowMin && (
+            {!shopClosed && !tiersLoading && !tiersError && belowMin && minOrderEur !== null && (
               <div className="cart-min-warning">
-                Noch {fmt(MIN_ORDER - totalPrice)} bis zum Mindestbestellwert
+                Noch {fmt(minOrderEur - totalPrice)} bis zum Mindestbestellwert
               </div>
             )}
 
@@ -165,7 +181,6 @@ const shopClosed = statusLoading || status === null || !status.is_open;
         )}
       </aside>
 
-      {/* Checkout modal */}
       {checkoutOpen && (
         <CheckoutModal
           onClose={() => setCheckoutOpen(false)}

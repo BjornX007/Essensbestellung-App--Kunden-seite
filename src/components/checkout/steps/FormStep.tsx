@@ -1,3 +1,4 @@
+// components/checkout/steps/FormStep.tsx
 "use client";
 
 import { Loader2 } from "lucide-react";
@@ -9,6 +10,8 @@ interface FormStepProps {
   submitting: boolean;
   onFormChange: (key: keyof CustomerForm, value: string) => void;
   onContinue: () => void;
+  onAddMoreItems: () => void;
+  shortfall?: { tierMin: number; needed: number } | null;
   deliveryError?: string | null;
 }
 
@@ -18,6 +21,8 @@ export default function FormStep({
   submitting,
   onFormChange,
   onContinue,
+  onAddMoreItems,
+  shortfall,
   deliveryError,
 }: FormStepProps) {
   const field = (
@@ -83,7 +88,35 @@ export default function FormStep({
         />
       </div>
 
-      {deliveryError && (
+      {shortfall && (
+        <div className="co-shortfall" role="alert">
+          <p>
+            Für deine Adresse liegt der Mindestbestellwert bei{" "}
+            {shortfall.tierMin.toLocaleString("de-DE", {
+              style: "currency",
+              currency: "EUR",
+            })}
+            . Dir fehlen noch{" "}
+            <strong>
+              {shortfall.needed.toLocaleString("de-DE", {
+                style: "currency",
+                currency: "EUR",
+              })}
+            </strong>
+            .
+          </p>
+          <button
+            type="button"
+            className="co-btn-secondary"
+            style={{ marginTop: "0.5rem", backgroundColor: "orange", color: "white" }}
+            onClick={onAddMoreItems}
+          >
+            Mehr bestellen
+          </button>
+        </div>
+      )}
+
+      {deliveryError && !shortfall && (
         <p className="co-err-msg" role="alert">
           ⚠️ {deliveryError}
         </p>

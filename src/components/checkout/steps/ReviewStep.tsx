@@ -68,7 +68,7 @@ export default function ReviewStep({
 </div>      </div>
 
       <div className="co-payment-badge">
-        💵 Zahlung bei Lieferung (Bar)
+         Zahlung bei Lieferung (Bar)
       </div>
 
       <div className="co-btn-row">

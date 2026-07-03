@@ -32,6 +32,22 @@ function ensureSumUpScript() {
   sumupScriptLoaded = true;
 }
 
+const FORM_STORAGE_KEY = "checkout:form:v1";
+
+function loadPersistedForm(): CustomerForm {
+  if (typeof window === "undefined") return EMPTY_FORM;
+  try {
+    const raw = localStorage.getItem(FORM_STORAGE_KEY);
+    if (!raw) return EMPTY_FORM;
+    const parsed = JSON.parse(raw);
+    // Merge over EMPTY_FORM so any missing/new fields still get a safe default
+    return { ...EMPTY_FORM, ...parsed };
+  } catch (e) {
+    console.warn("[CheckoutModal] Failed to read persisted form:", e);
+    return EMPTY_FORM;
+  }
+}
+
 const mapLines = (lines: ReturnType<typeof useCart>["lines"]) =>
   lines.map((l) => ({
     product_id: l.product.id,
@@ -71,10 +87,12 @@ export default function CheckoutModal({
 
   const [step, setStep] = useState<Step>("form");
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
+  const [formHydrated, setFormHydrated] = useState(false);
   const [errors, setErrors] = useState<Partial<CustomerForm>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [shortfall, setShortfall] = useState<{ needed: number; tierMin: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
@@ -84,57 +102,81 @@ export default function CheckoutModal({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { ensureSumUpScript(); }, []);
-useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
-  const returnedCheckoutId = params.get("sumup_checkout_id");
-  if (!returnedCheckoutId) return;
 
-  // Clean URL immediately
-  window.history.replaceState({}, "", window.location.pathname);
+  // ── Load persisted form on mount ─────────────────────────────────────────
+  // Runs once when the modal mounts. If the user closed checkout earlier to
+  // add more items and reopens it, their contact/address details come back
+  // automatically instead of a blank form.
+  useEffect(() => {
+    setForm(loadPersistedForm());
+    setFormHydrated(true);
+  }, []);
 
-  const raw = sessionStorage.getItem("sumup_pending");
-  if (!raw) return;
-  sessionStorage.removeItem("sumup_pending");
-
-  const pending = JSON.parse(raw);
-  if (pending.checkoutId !== returnedCheckoutId) return;
-
-  // Restore state and save order
-  setForm(pending.form);
-  setDeliveryFee(pending.deliveryFee);
-  setCheckoutId(pending.checkoutId);
-  setSubmitting(true);
-
-fetch("/api/confirm-order", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    customer: pending.form,
-    items: pending.lines,
-    total: pending.totalPrice + pending.deliveryFee,
-    deliveryFee: pending.deliveryFee,
-    payment_method: "card",
-    sumup_checkout_id: pending.checkoutId,
-    idempotency_key: pending.idempotencyKey,
-  }),
-})
-  .then((r) => r.json())
-  .then((data) => {
-    if (data.orderNumber) {
-      sessionStorage.removeItem("sumup_pending"); // ✅ clear on success
-      setOrderNumber(data.orderNumber);
-      setStep("success");
-    } else {
-      setErrorMsg(data.error ?? "Bestellung konnte nicht gespeichert werden");
-      setStep("error");
+  // ── Persist form on every change ─────────────────────────────────────────
+  // Gated on formHydrated so we don't immediately overwrite storage with
+  // EMPTY_FORM before the load-effect above has run.
+  useEffect(() => {
+    if (!formHydrated) return;
+    try {
+      localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(form));
+    } catch (e) {
+      console.warn("[CheckoutModal] Failed to persist form:", e);
     }
-  })
-    .catch(() => {
-      setErrorMsg("Bestellung konnte nicht gespeichert werden");
-      setStep("error");
+  }, [form, formHydrated]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const returnedCheckoutId = params.get("sumup_checkout_id");
+    if (!returnedCheckoutId) return;
+
+    // Clean URL immediately
+    window.history.replaceState({}, "", window.location.pathname);
+
+    const raw = sessionStorage.getItem("sumup_pending");
+    if (!raw) return;
+    sessionStorage.removeItem("sumup_pending");
+
+    const pending = JSON.parse(raw);
+    if (pending.checkoutId !== returnedCheckoutId) return;
+
+    // Restore state and save order
+    setForm(pending.form);
+    setDeliveryFee(pending.deliveryFee);
+    setCheckoutId(pending.checkoutId);
+    setSubmitting(true);
+
+    fetch("/api/confirm-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer: pending.form,
+        items: pending.lines,
+        total: pending.totalPrice + pending.deliveryFee,
+        deliveryFee: pending.deliveryFee,
+        payment_method: "card",
+        sumup_checkout_id: pending.checkoutId,
+        idempotency_key: pending.idempotencyKey,
+      }),
     })
-    .finally(() => setSubmitting(false));
-}, []);
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.orderNumber) {
+          sessionStorage.removeItem("sumup_pending"); // clear on success
+          try { localStorage.removeItem(FORM_STORAGE_KEY); } catch {}
+          setOrderNumber(data.orderNumber);
+          setStep("success");
+        } else {
+          setErrorMsg(data.error ?? "Bestellung konnte nicht gespeichert werden");
+          setStep("error");
+        }
+      })
+      .catch(() => {
+        setErrorMsg("Bestellung konnte nicht gespeichert werden");
+        setStep("error");
+      })
+      .finally(() => setSubmitting(false));
+  }, []);
+
   // ── Poll SumUp for 3DS ───────────────────────────────────────────────────
   useEffect(() => {
     if (step !== "payment" || !checkoutId) return;
@@ -142,8 +184,8 @@ fetch("/api/confirm-order", {
     const MAX_ATTEMPTS = 150;
 
     pollRef.current = setInterval(async () => {
-  if (sessionStorage.getItem("sumup_pending")) return; // ✅ 3DS redirect pending
-  attempts++
+      if (sessionStorage.getItem("sumup_pending")) return; // 3DS redirect pending
+      attempts++;
       if (attempts > MAX_ATTEMPTS) {
         clearInterval(pollRef.current!);
         setErrorMsg("Zeitüberschreitung. Bitte versuche es erneut.");
@@ -177,6 +219,10 @@ fetch("/api/confirm-order", {
   const handleFormChange = (key: keyof CustomerForm, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+    // Editing the address (or anything else) invalidates a previously shown
+    // shortfall — force a fresh check on next submit rather than showing
+    // stale numbers.
+    if (shortfall) setShortfall(null);
   };
 
   // ── Step 1 continue: validate + delivery check → summary ─────────────────
@@ -187,6 +233,7 @@ fetch("/api/confirm-order", {
 
     setSubmitting(true);
     setDeliveryError(null);
+    setShortfall(null);
 
     try {
       const res = await fetch("/api/delivery/distance", {
@@ -205,7 +252,21 @@ fetch("/api/confirm-order", {
         return;
       }
 
-    setDeliveryFee(parseFloat(data.tier?.deliveryFee ?? 0));
+      const tierMinOrder = Number(data.tier?.minOrder ?? 0);
+      const tierFee = Number(data.tier?.deliveryFee ?? 0);
+
+      // Real, address-specific minimum vs. actual cart total. This is the
+      // check that was previously missing — data.tier was fetched but never
+      // compared against totalPrice before advancing to summary.
+      if (totalPrice < tierMinOrder) {
+        setShortfall({
+          needed: parseFloat((tierMinOrder - totalPrice).toFixed(2)),
+          tierMin: tierMinOrder,
+        });
+        return; // stay on the form step — cart & form remain persisted
+      }
+
+      setDeliveryFee(tierFee);
       setStep("summary");
     } catch {
       setDeliveryError("Adresse konnte nicht geprüft werden. Bitte erneut versuchen.");
@@ -215,43 +276,43 @@ fetch("/api/confirm-order", {
   };
 
   // ── Step 2a: card selected → create SumUp checkout → payment step ────────
- const handleSummaryCard = async () => {
-  setSubmitting(true);
-  orderSaved.current = false;
-  try {
-    const res = await fetch("/api/create-checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: mapLines(lines),
-        total: totalPrice + deliveryFee,
-      }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error ?? "Zahlung konnte nicht gestartet werden");
+  const handleSummaryCard = async () => {
+    setSubmitting(true);
+    orderSaved.current = false;
+    try {
+      const res = await fetch("/api/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: mapLines(lines),
+          total: totalPrice + deliveryFee,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Zahlung konnte nicht gestartet werden");
+      }
+      const data = await res.json();
+
+      const idempotencyKey = `order_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      sessionStorage.setItem("sumup_pending", JSON.stringify({
+        checkoutId: data.checkoutId,
+        idempotencyKey,
+        form,
+        lines: mapLines(lines),
+        totalPrice,
+        deliveryFee,
+      }));
+
+      setCheckoutId(data.checkoutId);
+      setStep("payment");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Unbekannter Fehler");
+      setStep("error");
+    } finally {
+      setSubmitting(false);
     }
-    const data = await res.json();
-
-    const idempotencyKey = `order_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-sessionStorage.setItem("sumup_pending", JSON.stringify({
-  checkoutId: data.checkoutId,
-  idempotencyKey,
-  form,
-  lines: mapLines(lines),
-  totalPrice,
-  deliveryFee,
-}));
-
-    setCheckoutId(data.checkoutId);
-    setStep("payment");
-  } catch (err) {
-    setErrorMsg(err instanceof Error ? err.message : "Unbekannter Fehler");
-    setStep("error");
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   // ── Step 2b: cash selected → review step ────────────────────────────────
   const handleSummaryCash = () => setStep("review");
@@ -287,6 +348,7 @@ sessionStorage.setItem("sumup_pending", JSON.stringify({
       }
       const data = await res.json();
       setOrderNumber(data.orderNumber ?? "");
+      try { localStorage.removeItem(FORM_STORAGE_KEY); } catch {}
       clear();
       setStep("success");
     } catch (err) {
@@ -321,6 +383,7 @@ sessionStorage.setItem("sumup_pending", JSON.stringify({
       }
       const data = await res.json();
       setOrderNumber(data.orderNumber ?? "");
+      try { localStorage.removeItem(FORM_STORAGE_KEY); } catch {}
       clear();
       setStep("success");
     } catch (err) {
@@ -356,6 +419,14 @@ sessionStorage.setItem("sumup_pending", JSON.stringify({
 
   const handleDone = () => { onSuccess(); onClose(); };
 
+  // Closing the modal to go add more items. Cart (CartContext) and form
+  // (this component) are both already in localStorage via the effects
+  // above, so nothing needs to be saved explicitly here — the state simply
+  // survives the unmount and rehydrates next time CheckoutModal opens.
+  const handleAddMoreItems = () => {
+    onClose();
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="co-overlay" role="dialog" aria-modal="true" aria-label="Checkout">
@@ -370,8 +441,10 @@ sessionStorage.setItem("sumup_pending", JSON.stringify({
             errors={errors}
             submitting={submitting}
             deliveryError={deliveryError}
+            shortfall={shortfall}
             onFormChange={handleFormChange}
             onContinue={handleContinue}
+            onAddMoreItems={handleAddMoreItems}
           />
         )}
 
@@ -380,7 +453,7 @@ sessionStorage.setItem("sumup_pending", JSON.stringify({
             lines={lines}
             subtotalPrice={totalPrice}
             deliveryFee={deliveryFee}
-         totalPrice={parseFloat((totalPrice + deliveryFee).toFixed(2))}
+            totalPrice={parseFloat((totalPrice + deliveryFee).toFixed(2))}
             paymentMethod={paymentMethod}
             submitting={submitting}
             onBack={() => setStep("form")}

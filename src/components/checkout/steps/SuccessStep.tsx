@@ -27,11 +27,11 @@ export function SuccessStep({
       </p>
 
       {paymentMethod === "paypal" && (
-        <p className="co-cash-note">🅿️ Zahlung über PayPal abgeschlossen.</p>
+        <p className="co-cash-note">Zahlung über PayPal abgeschlossen.</p>
       )}
       {paymentMethod === "cash_on_delivery" && (
         <p className="co-cash-note">
-          💵 Bitte halte den Betrag von{" "}
+           Bitte halte den Betrag von{" "}
           <strong>{fmt(totalPrice)}</strong> bei Lieferung bereit.
         </p>
       )}
