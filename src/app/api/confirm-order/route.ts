@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Warenkorb ist leer" }, { status: 400 });
     }
-    if (total < 15) {
+    if (total < 0.01) {
       return NextResponse.json(
         { error: "Mindestbestellwert von 15,00 € nicht erreicht" },
         { status: 400 }
